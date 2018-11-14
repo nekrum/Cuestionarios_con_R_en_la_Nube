@@ -1,0 +1,104 @@
+---
+title: "Lateralidad de Edinburgh"
+output:
+  html_notebook:
+    theme: spacelab
+---
+
+## Procesamiento base
+
+En general aquellas funciones y librerías que deben estar disponibles para el documento es recomendable colocarlas en el 
+chunk **setup** el cual tiene características especiales como no mostrar resultados y ejecutarse automáticamente en cada 
+**R notebook**. Esta práctica facilita la organización de librerías y depuración de errores. Por último en lo personal me
+parece de gran utilidad el uso de archivos separados para funciones y segmentos grandes de código, dejando en el **notebook**
+el codigo de procesamiento indispensable.
+
+```{r message=FALSE, results='hide'}
+source("ILEFunctions.R")
+```
+
+Para hacer uso del archivo en **Google** el primer paso es autentificarse. Google se vale de el servicio *oauth* para 
+idetificarnos sin usar un password. El siguiente comando abre una pagina de nuestro navegador donde se nos requiere
+permitir acceso a la sesión de R acceso a nuestros archivos.
+
+```{r Solo servidor, message=FALSE}
+gs_auth()
+```
+
+> Este método genera credenciales locales. Tenemos que ser cuidadosos de no publicarlas en el caso de usar un sistema de
+control de versiones. Sin emabrgo estas se puede revocar en la pagina de Google, ademas de tener una caducidad.
+
+Ya autenticados se necesita definir el _"objeto"_ o archivo donde tenemos la información.
+
+```{r Importamos los datos, message=FALSE, results='hide'}
+gs.object <- gs_title("ILE [R en la Nube] (Respuestas)")
+```
+
+Con el objeto definido podemos leer la información del archivo en una tabla
+
+```{r Lectura de datos, message=FALSE, results='hide'}
+ile.data <- gs_read(ss = gs.object, ws = "Respuestas de formulario 1")
+```
+
+Y sobre esta tabla podemos hacer las transformaciones y métodos enfocados a los datos. Que en este caso uso la librería 
+`data.table`, sin embargo por default los datos se leen en formato **tibble** facilitando la implementación de pipes (`%>%`).
+
+```{r Procesamiento de datos, message=FALSE, results='hide'}
+setDT(ile.data)
+ile.data[, c("fecha", "hora") := tstrsplit(`Marca temporal`, " ")]
+ile.data[, `:=`(`Marca temporal` = NULL, fecha = as.IDate(fecha), hora = as.ITime(hora))]
+```
+
+En el caso específico de este formulario, podemos directamente cambiar el formato de los datos, en específico el nombre
+de las preguntas para que sean manejables las tablas.
+
+```{r Ajustando Datos}
+nombres.originales <- names(ile.data)
+nombres.cortos <- c("id.participante", paste0("P", 1:12))
+setnames(ile.data, nombres.originales[-14:-15], nombres.cortos)
+ile.data <- melt(
+  ile.data, id.vars = c("id.participante", "fecha", "hora"), value.name = "valor", variable.name = "pregunta"
+)
+```
+
+Es aquí donde se puede visualizar la ventaja real de R. Mientras que El formulario de Google presenta gráficos definidos
+estáticos, al importar los datos es mucho mas sencillo tratarlos con base en la características propias del formulario.
+Aquí se puede obtener el coeficiente de lateralidad para cada usuario. Y por supuesto se pueden obtener la estadística
+descriptiva, pruebas de hipótesis o modelos más complejos.
+
+```{r Calculando indice de lateralidad}
+ile.data[, valor.ajustado := valor - 3]
+ile.data[valor.ajustado == 0, valor.ajustado := 1]
+ile.data <- ile.data[, .(
+  izquierda = .SD[(valor == 3 & valor.ajustado == 1) | (valor != 3 & valor.ajustado < 0), sum(abs(valor.ajustado))],
+  derecha = .SD[(valor == 3 & valor.ajustado == 1) | (valor != 3 & valor.ajustado > 0), sum(abs(valor.ajustado))]
+), .(id.participante, fecha, hora)]
+ile.data[, indice.lateralidad := ((derecha - izquierda) / (derecha + izquierda)) * 100]
+ile.data
+```
+
+
+## Procedimiento con Funciones
+
+Otra recomendación consiste en pasar esta lógica programada a funciones, lo que permite tanto simplificar las llamadas en
+el documento, como un mejor uso de la memoria RAM, así como la introducción de practicas de depuración mas avanzadas.
+
+```{r Importamos datos con función, message=FALSE}
+ile.data <- ImportarDatosILE(
+  titulo.archivo = "ILE [R en la Nube] (Respuestas)",titulo.hoja = "Respuestas de formulario 1"
+)
+```
+
+Incluso se facilita la lectura del código si se usan nombres descriptivos para cada función.
+
+```{r}
+ile.data <- CalculaIndiceLateralidad(ile.data)
+ile.data
+```
+
+Dejando el procesamiento mas puntual para el archivo como el filtrado o visualización de los datos.
+
+```{r}
+ile.data[ indice.lateralidad > 50]
+```
+
