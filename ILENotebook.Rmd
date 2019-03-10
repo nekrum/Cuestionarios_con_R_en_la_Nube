@@ -7,15 +7,19 @@ output:
 
 ## Procesamiento base
 
+### Setup, chunk inicial
+
 En general aquellas funciones y librerías que deben estar disponibles para el documento es recomendable colocarlas en el 
 chunk **setup** el cual tiene características especiales como no mostrar resultados y ejecutarse automáticamente en cada 
-**R notebook**. Esta práctica facilita la organización de librerías y depuración de errores. Por último en lo personal me
+**R notebook**. Esta práctica facilita la organización de librerías y depuración de errores. En lo personal me
 parece de gran utilidad el uso de archivos separados para funciones y segmentos grandes de código, dejando en el **notebook**
-el codigo de procesamiento indispensable.
+el código de procesamiento mínimo.
 
 ```{r message=FALSE, results='hide'}
 source("ILEFunctions.R")
 ```
+
+### Autenticación con Google
 
 Para hacer uso del archivo en **Google** el primer paso es autentificarse. Google se vale de el servicio *oauth* para 
 idetificarnos sin usar un password. El siguiente comando abre una pagina de nuestro navegador donde se nos requiere
@@ -28,6 +32,8 @@ gs_auth()
 > Este método genera credenciales locales. Tenemos que ser cuidadosos de no publicarlas en el caso de usar un sistema de
 control de versiones. Sin emabrgo estas se puede revocar en la pagina de Google, ademas de tener una caducidad.
 
+### Descarga de información
+
 Ya autenticados se necesita definir el _"objeto"_ o archivo donde tenemos la información.
 
 ```{r Importamos los datos, message=FALSE, results='hide'}
@@ -36,9 +42,11 @@ gs.object <- gs_title("ILE [R en la Nube] (Respuestas)")
 
 Con el objeto definido podemos leer la información del archivo en una tabla
 
-```{r Lectura de datos, message=FALSE, results='hide'}
+```{r Lectura de datos, message=FALSE, results='hide', warning=FALSE}
 ile.data <- gs_read(ss = gs.object, ws = "Respuestas de formulario 1")
 ```
+
+### Procesamiento de datos
 
 Y sobre esta tabla podemos hacer las transformaciones y métodos enfocados a los datos. Que en este caso uso la librería 
 `data.table`, sin embargo por default los datos se leen en formato **tibble** facilitando la implementación de pipes (`%>%`).
@@ -74,7 +82,24 @@ ile.data <- ile.data[, .(
   derecha = .SD[(valor == 3 & valor.ajustado == 1) | (valor != 3 & valor.ajustado > 0), sum(abs(valor.ajustado))]
 ), .(id.participante, fecha, hora)]
 ile.data[, indice.lateralidad := ((derecha - izquierda) / (derecha + izquierda)) * 100]
+```
+
+### Resultado
+
+Tenemos entonces la tabla resultante con el **Indice de lateralidad** calculado:
+
+```{r}
 ile.data
+```
+
+Ademas de que podemos incluir representaciones gráficas de los resultados:
+
+```{r}
+ggplot(ile.data, aes(x = id.participante, y = indice.lateralidad, col = id.participante)) +
+  geom_point() +
+  theme_minimal()
+  
+
 ```
 
 
